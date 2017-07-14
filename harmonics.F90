@@ -20,6 +20,8 @@ module harmonics
   integer :: lmax
   real(np) :: rmax
 
+  real(np) :: alpha = 0.5, d = 0.5
+
   ! grid coordinates
   integer :: nrad, ntheta, nphi
   real(np), dimension(:), allocatable :: rads, thetas, phis
@@ -32,7 +34,7 @@ module harmonics
   real(np), dimension(:,:,:), allocatable :: plm
   real(np), dimension(:,:,:), allocatable :: qlm, dqlm, qlm_sin
   complex(np), dimension(:,:), allocatable :: blm0
-  complex(np), dimension(:,:,:), allocatable :: blm, alm
+  complex(np), dimension(:,:,:), allocatable :: blm, alm, ralm
 
   ! fft variables
   type(c_ptr) :: plan
@@ -281,9 +283,10 @@ module harmonics
     blm0 = 0
     do im = 0, lmax
       do il = im, lmax
-        blm0(il, im) = dt*sum(br_blm(im, :)*plm(il, im, :))*filter(il)
+        blm0(il, im) = dt*sum(br_blm(im, :)*plm(il, im, :))*filter(il)/il/(il+1)
       enddo
     enddo
+    blm0(0,0) = 0 ! otherwise it's infinite (division by zero)
 
   end subroutine
 
@@ -367,24 +370,58 @@ module harmonics
     implicit none
 
     integer :: ir, il, im, nrad
+    complex(np), parameter :: s = cmplx(0,-1,np)
+    complex(np) :: fact1
     real(np), dimension(:) :: rads
-    integer, dimension(0:lmax) :: ls
-    real(np), dimension(0:lmax) :: r_rsun, r_rmax, div_fact
-    real(np), dimension(:,:), allocatable :: rdep_blm, rdep_alm
+    real(np), dimension(:), allocatable :: rads1
+    real(np) :: rad_fact
+    ! integer, dimension(0:lmax) :: ls
+    ! real(np), dimension(0:lmax) :: r_rsun, r_rmax, div_fact
+    real(np), dimension(:,:), allocatable :: bess1, bess2, dbess1, dbess2
+    complex(np), dimension(0:lmax) :: hfact, div_fact, bess_fact, dbess_fact
+    complex(np), dimension(:,:), allocatable :: rdep_blm, rdep_alm, rdep_ralm
 
     nrad = size(rads,1)
-    allocate(rdep_blm(0:lmax,nrad), rdep_alm(0:lmax,nrad))
-    
-    ls = [(il, il=0,lmax)]
-    div_fact = ls + 1 + ls*(rmax**(-2*ls - 1))
-    
-    !$omp parallel do private(r_rsun, r_rmax)
-    do ir = 1, nrad
-      r_rsun = rads(ir)**(-ls - 2)
-      r_rmax = (rads(ir)/rmax)**(2*ls + 1)
+    allocate(bess1(0:lmax, nrad), bess2(0:lmax, nrad))
+    allocate(dbess1(0:lmax, nrad), dbess2(0:lmax, nrad))
+    allocate(rdep_blm(0:lmax, nrad), rdep_alm(0:lmax, nrad), rdep_ralm(0:lmax, nrad))
 
-      rdep_blm(:,ir) = r_rsun*(ls + 1 + ls*r_rmax)/div_fact
-      rdep_alm(:,ir) = r_rsun*(r_rmax - 1)/div_fact
+    rads1 = alpha*(rads+d)
+    
+    ! calculate all required bessel functions
+    bess1(0,:) = sqrt(2/pi/rads1)*sin(rads1)
+    bess2(0,:) = -sqrt(2/pi/rads1)*cos(rads1)
+    bess1(1,:) = sqrt(2/pi/rads1)*(sin(rads1)/rads1 - cos(rads1))
+    bess2(1,:) = sqrt(2/pi/rads1)*(cos(rads1)/rads1 + sin(rads1))
+
+    do il = 2, lmax
+      bess1(il,:) = 2*(il + 0.5_np)*bess1(il-1,:)/rads1 - bess1(il-2,:)
+      bess2(il,:) = 2*(il + 0.5_np)*bess2(il-1,:)/rads1 - bess2(il-2,:)
+    enddo
+
+    dbess1(0,:) = alpha*sqrt(2/pi/rads1)*(cos(rads1) - 3*sin(rads1)/rads1/2)
+    dbess2(0,:) = alpha*sqrt(2/pi/rads1)*(sin(rads1) + 3*cos(rads1)/rads1/2)
+
+    do il = 1, lmax
+      dbess1(il,:) = alpha*(bess1(il-1,:) - (il + 0.5_np)*bess1(il,:)/rads1)
+      dbess2(il,:) = alpha*(bess2(il-1,:) - (il + 0.5_np)*bess2(il,:)/rads1)
+    enddo
+
+    fact1 = 1/2/alpha/(rads(nrad) + d) - s
+    hfact = (dbess2(:,nrad) + fact1*bess2(:,nrad))/(dbess1(:,nrad) + fact1*bess1(:,nrad))
+
+    div_fact = bess2(:, 1) - hfact*bess1(:, 1)
+
+    ! !$omp parallel do private(r_rsun, r_rmax)
+    do ir = 1, nrad
+      rad_fact = rads(1)/rads(ir)*sqrt((rads(ir) + d)/(rads(1) + d))
+      bess_fact = bess2(:, ir) - hfact*bess1(:, ir)
+      dbess_fact = dbess2(:, ir) - hfact*dbess1(:, ir)
+
+      rdep_ralm(:, ir) = rad_fact*bess_fact/div_fact
+      rdep_alm(:, ir) = rad_fact*bess_fact/div_fact/rads(ir)
+      rdep_blm(:, ir) = (0.5_np*rad_fact*bess_fact/div_fact/(rads(ir) + d) - &
+        rad_fact*bess_fact/div_fact/rads(ir) + rad_fact*dbess_fact/div_fact)/rads(ir)
     enddo
 
     allocate(blm(0:lmax, 0:lmax, nrad))
@@ -395,10 +432,12 @@ module harmonics
     !deallocate(blm0)
 
     alm = blm
+    ralm = blm
     ! !$omp parallel do
     do im = 0, lmax
       blm(:, im, :) = blm(:, im, :)*rdep_blm(:, :)
       alm(:, im, :) = alm(:, im, :)*rdep_alm(:, :)
+      ralm(:, im, :) = ralm(:, im, :)*rdep_ralm(:, :)
     enddo
 
   end
@@ -470,9 +509,11 @@ module harmonics
         jm = im + 1
         do il = lmax, im, -1
           ! sum over l first in preparation for fft
-          bbr(jm, :) = bbr(jm, :) + blm(il, im, ir)*qlm(il, im, :)
-          bbt(jm, :) = bbt(jm, :) + alm(il, im, ir)*dqlm(il, im, :)
-          bbp(jm, :) = bbp(jm, :) + mi*alm(il, im, ir)*qlm_sin(il, im, :)
+          bbr(jm, :) = bbr(jm, :) + il*(il + 1)*alm(il, im, ir)*qlm(il, im, :)
+          bbt(jm, :) = bbt(jm, :) + (mi*alpha*ralm(il, im, ir)*qlm_sin(il, im, :) + &
+            blm(il, im, ir)*dqlm(il, im, :))
+          bbp(jm, :) = bbp(jm, :) + (-alpha*ralm(il, im, ir)*dqlm(il, im, :) + &
+            mi*blm(il, im, ir)*qlm_sin(il, im, :))
         enddo
         if (im > 0) then
           ! use the conjugation for negative m rather than direct calculation

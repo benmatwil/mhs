@@ -13,16 +13,16 @@ else
 endif
 FLAGS += -Jmod -fopenmp
 
-all : potential
+all : mhs
 
-potential : harmonics.F90 potential.F90
+mhs : harmonics.F90 mhs.F90
 	$(FC) $(FLAGS) $(MODULES) $(LIBRARIES) $(DEFINE) $^ -o $@
 
 null_check : harmonics.F90 null_check.f90
 	$(FC) $(FLAGS) $(MODULES) $(LIBRARIES) $^ -o $@
 
 clean :
-	@rm -r potential mod/*.mod
+	@rm -r mhs mod/*.mod
 
 datatidy :
 	@rm hmi*/synmap*.dat
