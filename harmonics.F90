@@ -10,7 +10,7 @@ end module
 
 module harmonics
 
-  use iso_fortran_env, np => real64
+  use iso_fortran_env, np => real64!, qp => real128
   use fftw3
 
   implicit none
@@ -370,26 +370,33 @@ module harmonics
     implicit none
 
     integer :: ir, il, im, nrad
-    complex(np), parameter :: s = cmplx(0,-1,np)
-    complex(np) :: fact1
+    integer, parameter :: qp = 16
+    ! complex(np), parameter :: s = cmplx(0,-1,np)
+    ! complex(np) :: fact1
     real(np), dimension(:) :: rads
-    real(np), dimension(:), allocatable :: rads1
-    real(np) :: rad_fact
+    real(qp), dimension(:), allocatable :: rads1
+    ! real(qp) :: rad_fact
     ! integer, dimension(0:lmax) :: ls
-    ! real(np), dimension(0:lmax) :: r_rsun, r_rmax, div_fact
-    real(np), dimension(:,:), allocatable :: bess1, bess2, dbess1, dbess2
-    real(np), dimension(:,:), allocatable :: ibess1
-    real(np) :: bess10
-    ! real(np) :: rj,ry,rjp,ryp
-    complex(np), dimension(0:lmax) :: hfact, bess1fact, bess2fact, div_fact, bess_fact, dbess_fact
-    complex(np), dimension(:,:), allocatable :: rdep_blm, rdep_alm
+    ! real(qp), dimension(0:lmax) :: r_rsun, r_rmax, div_fact
+    real(qp), dimension(:,:), allocatable :: bess1, bess2, dbess1, dbess2
+    real(qp), dimension(:,:), allocatable :: ibess1
+    real(qp) :: bess10
+    ! real(qp) :: rj,ry,rjp,ryp
+    ! complex(qp), dimension(0:lmax) :: hfact, bess1fact, bess2fact, div_fact, bess_fact, dbess_fact
+    complex(qp), dimension(0:lmax, 0:lmax) :: clm, dlm
+    real(qp) :: k1, k2
+    complex(qp) :: blm1, blm2, blm3
+    complex(qp) :: p1, p2, p3, q1, q2, q3, d1, d2
+    ! complex(qp), dimension(:,:), allocatable :: rdep_blm, rdep_alm
 
     nrad = size(rads,1)
-    allocate(bess1(0:lmax, nrad), bess2(0:lmax, nrad))
+    allocate(bess1(-2:lmax+2, nrad), bess2(-2:lmax+2, nrad))
     allocate(dbess1(0:lmax, nrad), dbess2(0:lmax, nrad))
-    allocate(rdep_blm(0:lmax, nrad), rdep_alm(0:lmax, nrad))
+    ! allocate(rdep_blm(0:lmax, nrad), rdep_alm(0:lmax, nrad))
 
+    allocate(rads1(nrad))
     rads1 = alpha*(rads + d)
+    ! print*, rads1
     
     ! calculate all required bessel functions
     ! bess1(0,:) = sqrt(2/pi/rads1)*sin(rads1)
@@ -398,7 +405,7 @@ module harmonics
     allocate(ibess1(nrad,3))
     ibess1(:,1) = 0
     ibess1(:,2) = 1
-    do il = lmax, 0, -1
+    do il = lmax+2, -2, -1
       ibess1(:,3) = (2*il + 3)*ibess1(:,2)/rads1 - ibess1(:,1)
       ibess1(:,1:2) = ibess1(:,2:3)
       bess1(il,:) = ibess1(:,3)
@@ -409,87 +416,86 @@ module harmonics
       bess1(:,ir) = bess1(:,ir)*bess10/bess1(0,ir)
     enddo
     
+    bess2(-2,:) = sqrt(2/pi/rads1)*(cos(rads1) - sin(rads1)/rads1)
+    bess2(-1,:) = sqrt(2/pi/rads1)*sin(rads1)
     bess2(0,:) = -sqrt(2/pi/rads1)*cos(rads1)
     bess2(1,:) = -sqrt(2/pi/rads1)*(cos(rads1)/rads1 + sin(rads1))
-    do il = 2, lmax
+    do il = 2, lmax+2
       bess2(il,:) = ((2*il - 1)*bess2(il-1,:) - rads1*bess2(il-2,:))/rads1
     enddo
     ! wronskian if required    
     ! bess1(il,:) = (2/pi/rads1 + bess2(il,:)*bess1(il-1,:))/bess2(il-1,:)
 
-    ! ir = 1
-    ! print*, rads1(ir)
-    ! do il = 0, lmax
-    !   print*, bess1(il,ir), bess2(il,ir)
-    ! enddo
+    ir = 40
+    print*, rads1(ir)
+    do il = 0, lmax
+      print*, bess1(il,ir), bess2(il,ir)
+    enddo
 
     ! and all the derivatives
     dbess1(0,:) = alpha*sqrt(2/pi/rads1)*(cos(rads1) - sin(rads1)/rads1/2)
     dbess2(0,:) = alpha*sqrt(2/pi/rads1)*(sin(rads1) + cos(rads1)/rads1/2)
 
     do il = 1, lmax
-      dbess1(il,:) = alpha*(bess1(il-1,:) - (il + 0.5_np)*bess1(il,:)/rads1)
-      dbess2(il,:) = alpha*(bess2(il-1,:) - (il + 0.5_np)*bess2(il,:)/rads1)
+      dbess1(il,:) = alpha*(bess1(il-1,:) - (il + 0.5_qp)*bess1(il,:)/rads1)
+      dbess2(il,:) = alpha*(bess2(il-1,:) - (il + 0.5_qp)*bess2(il,:)/rads1)
     enddo
 
-    ! print*, dbess1(:,nrad)
+    allocate(blm(0:lmax, 0:lmax, nrad), alm(0:lmax, 0:lmax, nrad))
 
-    fact1 = 1/(rads(nrad) + d)/2 - s*alpha
-    ! hfact = (dbess2(:,nrad) + fact1*bess2(:,nrad))/(dbess1(:,nrad) + fact1*bess1(:,nrad))
+    clm(0, 0) = 1
+    dlm(0, 0) = (blm0(0, 0) - clm(0, 0)*bess1(0, 1))/bess2(0, 1)
+    do il = 1, lmax
+      do im = 0, il
+        if (il /= lmax) then
+          blm1 = blm0(il-1, im)
+          blm2 = blm0(il, im)
+          blm3 = blm0(il+1, im)
+        else
+          blm1 = blm0(il-1, im)
+          blm2 = blm0(il, im)
+          blm3 = blm0(il, im)
+        endif
+        k1 = (il-1)*(il-im)/real(2*il-1, qp)
+        k2 = (il+2)*(il+im+1)/real(2*il+3, qp)
 
-    ! div_fact = bess2(:, 1) - hfact*bess1(:, 1)
+        p2 = cmplx(0,im,qp)*(bess1(il, nrad) - bess2(il, nrad)/bess2(il, 1)*bess1(il, 1) + &
+          rads1(nrad)*(bess1(il-1, nrad) - bess1(il+1, nrad)) - &
+          rads1(nrad)*(bess2(il-1, nrad) - bess2(il+1, nrad))/bess2(il, 1)*bess1(il, 1))/2
+        
+        p3 = k1*rads1(nrad)*(bess1(il-1, nrad) - bess2(il-1, nrad)/bess2(il-1, 1)*bess1(il-1, 1))
 
-    bess1fact = dbess1(:,nrad) + fact1*bess1(:,nrad)
-    bess2fact = dbess2(:,nrad) + fact1*bess2(:,nrad)
+        p1 = k2*rads1(nrad)*(bess1(il+1, nrad) - bess2(il+1, nrad)/bess2(il+1, 1)*bess1(il+1, 1))
 
-    div_fact = bess2(:,1)*bess1fact - bess1(:,1)*bess2fact
-    ! print*, bess1(:,1)
-    ! print*, '-------------------------------------------'
-    ! print*, bess2(:,1)
-    ! print*, '-------------------------------------------'
-    ! print*, bess1fact
-    ! print*, '-------------------------------------------'
-    ! print*, bess2fact
-    ! print*, '-------------------------------------------'
-    ! print*, div_fact
+        d1 = cmplx(0,im,qp)*(bess2(il, nrad)/bess2(il, 1)*blm2 + &
+          rads1(nrad)*(bess2(il-1, nrad) - bess2(il+1, nrad))/bess2(il, 1)*blm2)/2 - &
+          k1*rads1(nrad)*bess2(il-1, nrad)/bess2(il-1, 1)*blm1 + &
+          k2*rads1(nrad)*bess2(il+1, nrad)/bess2(il+1, 1)*blm3
 
-    ! !$omp parallel do private(r_rsun, r_rmax)
-    do ir = 1, nrad
-      rad_fact = 1/rads(ir)*sqrt((rads(ir) + d)/(1 + d))
-      bess_fact = bess2(:, ir)*bess1fact - bess1(:, ir)*bess2fact
-      dbess_fact = dbess2(:, ir)*bess1fact - dbess1(:, ir)*bess2fact
+        q2 = rads1(nrad)*cmplx(0,im,qp)*(bess1(il, nrad) - bess2(il, nrad)/bess2(il, 1)*bess1(il, 1))
 
-      if (ir == nrad) then
-        ! print*, bess1(:,ir)
-        ! print*, bess2(:,ir)
-        ! print*, dbess1(:,ir)
-        ! print*, dbess2(:,ir)
-        ! print*, bess_fact
-        ! print*, '-------------------------------------------'
-        ! print*, dbess_fact
-        ! print*, '-------------------------------------------'
-        ! print*, 1/div_fact
-        ! print*, '-------------------------------------------'
-        ! print*, rad_fact*(0.5_np*bess_fact/(rads(ir) + d) + dbess_fact)/div_fact
-      endif
+        q3 = k1*(bess1(il-1, nrad) - bess2(il-1, nrad)/bess2(il-1, 1)*bess1(il-1, 1) + &
+          rads1(nrad)*(bess1(il-2, nrad) - bess1(il, nrad)) - &
+          rads1(nrad)*(bess2(il-2, nrad) - bess2(il, nrad)/bess2(il-1, 1)*bess1(il-1, 1)))/2
 
-      ! if (ir == 1) print*, bess_fact/div_fact
-      rdep_alm(:, ir) = rad_fact*bess_fact/div_fact
-      rdep_blm(:, ir) = rad_fact*(0.5_np*bess_fact/(rads(ir) + d) + dbess_fact)/div_fact
-    enddo
+        q1 = k2*(bess1(il+1, nrad) - bess2(il+1, nrad)/bess2(il+1, 1)*bess1(il+1, 1) + &
+          rads1(nrad)*(bess1(il, nrad) - bess1(il+2, nrad)) - &
+          rads1(nrad)*(bess2(il, nrad) - bess2(il+2, nrad)/bess2(il+1, 1)*bess1(il+1, 1)))/2
 
-    allocate(blm(0:lmax, 0:lmax, nrad))
-    ! !$omp parallel do
-    do ir = 1, nrad
-      blm(:, :, ir) = blm0
-    enddo
-    !deallocate(blm0)
+        d2 = cmplx(0,im,qp)*rads1(nrad)*bess2(il, nrad)/bess2(il, 1)*blm2 + &
+          k1/2*(bess2(il-1, nrad)/bess2(il-1, 1)*blm1 + &
+            rads1(nrad)*(bess2(il-2, nrad) - bess2(il, nrad))/bess2(il-1, 1)*blm1) + &
+          k2/2*(bess2(il+1, nrad)/bess2(il+1, 1)*blm3 + &
+            rads1(nrad)*(bess2(il, nrad) - bess2(il+2, nrad))/bess2(il+1, 1)*blm3)
+        
+        clm(il, im) = ((p1*q3 - p3*q1)*clm(il-1, im) + p1*d2 - q1*d1)/(p2*q1 - p1*q2)
 
-    alm = blm
-    ! !$omp parallel do
-    do im = 0, lmax
-      blm(:, im, :) = blm(:, im, :)*rdep_blm(:, :)
-      alm(:, im, :) = alm(:, im, :)*rdep_alm(:, :)
+        dlm(il, im) = (blm2 - clm(il, im)*bess1(il, 1))/bess2(il, 1)
+
+        blm(il, im, :) = sqrt(rads + d)*(clm(il, im)*bess1(il, :) + dlm(il, im)*bess2(il, :))/rads
+        alm(il, im, :) = alpha*sqrt(rads + d)*(clm(il, im)*dbess1(il, :) + dlm(il, im)*dbess2(il, :))/rads + &
+          0.5_qp*(clm(il, im)*bess1(il, :) + dlm(il, im)*bess2(il, :))/rads/sqrt(rads + d)
+      enddo
     enddo
 
   end
@@ -561,11 +567,11 @@ module harmonics
         jm = im + 1
         do il = lmax, im, -1
           ! sum over l first in preparation for fft
-          bbr(jm, :) = bbr(jm, :) + il*(il+1)*alm(il, im, ir)*qlm(il, im, :)/rads(ir)
-          bbt(jm, :) = bbt(jm, :) + (mi*alpha*alm(il, im, ir)*qlm_sin(il, im, :) + &
-            blm(il, im, ir)*dqlm(il, im, :))
-          bbp(jm, :) = bbp(jm, :) + (-alpha*alm(il, im, ir)*dqlm(il, im, :) + &
-            mi*blm(il, im, ir)*qlm_sin(il, im, :))
+          bbr(jm, :) = bbr(jm, :) + il*(il+1)*blm(il, im, ir)*qlm(il, im, :)/rads(ir)
+          bbt(jm, :) = bbt(jm, :) + (mi*alpha*blm(il, im, ir)*qlm_sin(il, im, :) + &
+            alm(il, im, ir)*dqlm(il, im, :))
+          bbp(jm, :) = bbp(jm, :) + (-alpha*blm(il, im, ir)*dqlm(il, im, :) + &
+            mi*alm(il, im, ir)*qlm_sin(il, im, :))
         enddo
         if (im > 0) then
           ! use the conjugation for negative m rather than direct calculation
@@ -646,208 +652,50 @@ module harmonics
 
   end
 
-  ! subroutine bessjy(x,xnu,rj,ry,rjp,ryp)
-    
-  !   implicit none
-
-  !   real(np), intent(in) :: x, xnu
-  !   real(np), intent(out) :: rj, ry, rjp, ryp
-  !   integer(int32), parameter :: maxit = 10000
-  !   real(np), parameter :: xmin = 2.0_np, eps = 1.0e-16_np, fpmin = 1.0e-300_np
-  !   integer(int32) :: i, isign, l, nl
-  !   real(np) :: a, b, c, d, del, del1, e, f, fact, fact2, fact3, ff, gam, gam1, gam2,&
-  !   gammi, gampl, h, p, pimu, pimu2, q, r, rjl, rjl1, rjmu, rjp1, rjpl, rjtemp, &
-  !   ry1, rymu, rymup, rytemp, sum, sum1, w, x2, xi, xi2, xmu, xmu2
-  !   complex(np) :: aa, bb, cc, dd, dl, pq
-
-  !   nl=merge(int(xnu+0.5_np), max(0,int(xnu-x+1.5_np)), x < xmin)
-  !   xmu=xnu-nl
-  !   xmu2=xmu*xmu
-  !   xi=1.0_np/x
-  !   xi2=2.0_np*xi
-  !   w=xi2/pi
-  !   isign=1
-  !   h=xnu*xi
-  !   if (h < fpmin) h=fpmin
-  !   b=xi2*xnu
-  !   d=0.0
-  !   c=h
-  !   do i=1,maxit
-  !     b=b+xi2
-  !     d=b-d
-  !     if (abs(d) < fpmin) d=fpmin
-  !     c=b-1.0_np/c
-  !     if (abs(c) < fpmin) c=fpmin
-  !     d=1.0_np/d
-  !     del=c*d
-  !     h=del*h
-  !     if (d < 0.0) isign=-isign
-  !     if (abs(del-1.0_np) < eps) exit
-  !   end do
-  !   if (i > maxit) stop 'x too large in bessjy; try asymptotic expansion'
-  !   rjl=isign*fpmin
-  !   rjpl=h*rjl
-  !   rjl1=rjl
-  !   rjp1=rjpl
-  !   fact=xnu*xi
-  !   do l=nl,1,-1
-  !     rjtemp=fact*rjl+rjpl
-  !     fact=fact-xi
-  !     rjpl=fact*rjtemp-rjl
-  !     rjl=rjtemp
-  !   end do
-  !   if (rjl == 0.0) rjl=eps
-  !   f=rjpl/rjl
-  !   if (x < xmin) then
-  !     x2=0.5_np*x
-  !     pimu=pi*xmu
-  !     if (abs(pimu) < eps) then
-  !       fact=1.0
-  !     else
-  !       fact=pimu/sin(pimu)
-  !     end if
-  !     d=-log(x2)
-  !     e=xmu*d
-  !     if (abs(e) < eps) then
-  !       fact2=1.0
-  !     else
-  !       fact2=sinh(e)/e
-  !     end if
-  !     call beschb(xmu,gam1,gam2,gampl,gammi)
-  !     ff=2.0_np/pi*fact*(gam1*cosh(e)+gam2*fact2*d)
-  !     e=exp(e)
-  !     p=e/(gampl*pi)
-  !     q=1.0_np/(e*pi*gammi)
-  !     pimu2=0.5_np*pimu
-  !     if (abs(pimu2) < eps) then
-  !       fact3=1.0
-  !     else
-  !       fact3=sin(pimu2)/pimu2
-  !     end if
-  !     r=pi*pimu2*fact3*fact3
-  !     c=1.0
-  !     d=-x2*x2
-  !     sum=ff+r*q
-  !     sum1=p
-  !     do i=1,maxit
-  !       ff=(i*ff+p+q)/(i*i-xmu2)
-  !       c=c*d/i
-  !       p=p/(i-xmu)
-  !       q=q/(i+xmu)
-  !       del=c*(ff+r*q)
-  !       sum=sum+del
-  !       del1=c*p-i*del
-  !       sum1=sum1+del1
-  !       if (abs(del) < (1.0_np+abs(sum))*eps) exit
-  !     end do
-  !     if (i > maxit) stop 'bessy series failed to converge'
-  !     rymu=-sum
-  !     ry1=-sum1*xi2
-  !     rymup=xmu*xi*rymu-ry1
-  !     rjmu=w/(rymup-f*rymu)
-  !   else
-  !     a=0.25_np-xmu2
-  !     pq=cmplx(-0.5_np*xi,1.0_np,kind=np)
-  !     aa=cmplx(0.0_np,xi*a,kind=np)
-  !     bb=cmplx(2.0_np*x,2.0_np,kind=np)
-  !     cc=bb+aa/pq
-  !     dd=1.0_np/bb
-  !     pq=cc*dd*pq
-  !     do i=2,maxit
-  !       a=a+2*(i-1)
-  !       bb=bb+cmplx(0.0_np,2.0_np,kind=np)
-  !       dd=a*dd+bb
-  !       if (absc(dd) < fpmin) dd=fpmin
-  !       cc=bb+a/cc
-  !       if (absc(cc) < fpmin) cc=fpmin
-  !       dd=1.0_np/dd
-  !       dl=cc*dd
-  !       pq=pq*dl
-  !       if (absc(dl-1.0_np) < eps) exit
-  !     end do
-  !     if (i > maxit) stop 'cf2 failed in bessjy'
-  !     p=real(pq)
-  !     q=aimag(pq)
-  !     gam=(p-f)/q
-  !     rjmu=sqrt(w/((p-f)*gam+q))
-  !     rjmu=sign(rjmu,rjl)
-  !     rymu=rjmu*gam
-  !     rymup=rymu*(p+q/gam)
-  !     ry1=xmu*xi*rymu-rymup
-  !   end if
-  !   fact=rjmu/rjl
-  !   rj=rjl1*fact
-  !   rjp=rjp1*fact
-  !   do i=1,nl
-  !     rytemp=(xmu+i)*xi2*ry1-rymu
-  !     rymu=ry1
-  !     ry1=rytemp
-  !   end do
-  !   ry=rymu
-  !   ryp=xnu*xi*rymu-ry1
-  
-  ! end subroutine bessjy
-
-  ! function absc(z)
-
-  !   implicit none
-
-  !   complex(np), intent(in) :: z
-  !   real(np) :: absc
-
-  !   absc=abs(real(z))+abs(aimag(z))
-
-  ! end function absc
-
-  ! subroutine beschb(x,gam1,gam2,gampl,gammi)
-    
-  !   implicit none
-    
-  !   real(np), intent(in) :: x
-  !   real(np), intent(out) :: gam1,gam2,gampl,gammi
-  !   integer(int32), parameter :: nuse1=7,nuse2=8
-  !   !if converting to double precision, set nuse1 = 7, nuse2 = 8.
-  !   real(np) :: xx
-  !   real(np), dimension(7) :: c1=[-1.142022680371168_np,&
-  !   6.5165112670737e-3_np,3.087090173086e-4_np,-3.4706269649e-6_np,&
-  !   6.9437664e-9_np,3.67795e-11_np,-1.356e-13_np]
-  !   real(np), dimension(8) :: c2=[1.843740587300905_np,&
-  !   -7.68528408447867e-2_np,1.2719271366546e-3_np,&
-  !   -4.9717367042e-6_np, -3.31261198e-8_np,2.423096e-10_np,&
-  !   -1.702e-13_np,-1.49e-15_np]
-    
-  !   xx=8.0_np*x*x-1.0_np
-  !   gam1=chebev(-1.0_np,1.0_np,c1(1:nuse1),xx)
-  !   gam2=chebev(-1.0_np,1.0_np,c2(1:nuse2),xx)
-  !   gampl=gam2-x*gam1
-  !   gammi=gam2+x*gam1
-
-  ! end subroutine beschb
-
-  ! function chebev(a,b,c,x)
-    
-  !   implicit none
-    
-  !   real(np), intent(in) :: a,b,x
-  !   real(np), dimension(:), intent(in) :: c
-  !   real(np) :: chebev_s
-  !   integer(int32) :: j,m
-  !   real(np) :: d,dd,sv,y,y2
-  !   real(np) :: chebev
-    
-  !   if ((x-a)*(x-b) > 0.0_np) stop 'x not in range in chebev_s'
-  !   m=size(c)
-  !   d=0.0_np
-  !   dd=0.0_np
-  !   y=(2.0_np*x-a-b)/(b-a)
-  !   y2=2.0_np*y
-  !   do j=m,2,-1
-  !   sv=d
-  !   d=y2*d-dd+c(j)
-  !   dd=sv
-  !   end do
-  !   chebev_s=y*d-dd+0.5_np*c(1)
-
-  ! end function chebev
-
 end module
+
+    ! ! print*, dbess1(:,nrad)
+
+    ! fact1 = 1/(rads(nrad) + d)/2 - s*alpha
+    ! ! hfact = (dbess2(:,nrad) + fact1*bess2(:,nrad))/(dbess1(:,nrad) + fact1*bess1(:,nrad))
+
+    ! ! div_fact = bess2(:, 1) - hfact*bess1(:, 1)
+
+    ! bess1fact = dbess1(:,nrad) + fact1*bess1(:,nrad)
+    ! bess2fact = dbess2(:,nrad) + fact1*bess2(:,nrad)
+
+    ! div_fact = bess2(:,1)*bess1fact - bess1(:,1)*bess2fact
+    ! ! print*, bess1(:,1)
+    ! ! print*, '-------------------------------------------'
+    ! ! print*, bess2(:,1)
+    ! ! print*, '-------------------------------------------'
+    ! ! print*, bess1fact
+    ! ! print*, '-------------------------------------------'
+    ! ! print*, bess2fact
+    ! ! print*, '-------------------------------------------'
+    ! ! print*, div_fact
+
+    ! ! !$omp parallel do private(r_rsun, r_rmax)
+    ! do ir = 1, nrad
+    !   rad_fact = 1/rads(ir)*sqrt((rads(ir) + d)/(1 + d))
+    !   bess_fact = bess2(:, ir)*bess1fact - bess1(:, ir)*bess2fact
+    !   dbess_fact = dbess2(:, ir)*bess1fact - dbess1(:, ir)*bess2fact
+
+    !   if (ir == nrad) then
+    !     ! print*, bess1(:,ir)
+    !     ! print*, bess2(:,ir)
+    !     ! print*, dbess1(:,ir)
+    !     ! print*, dbess2(:,ir)
+    !     ! print*, bess_fact
+    !     ! print*, '-------------------------------------------'
+    !     ! print*, dbess_fact
+    !     ! print*, '-------------------------------------------'
+    !     ! print*, 1/div_fact
+    !     ! print*, '-------------------------------------------'
+    !     ! print*, rad_fact*(0.5_np*bess_fact/(rads(ir) + d) + dbess_fact)/div_fact
+    !   endif
+
+    !   ! if (ir == 1) print*, bess_fact/div_fact
+    !   rdep_alm(:, ir) = rad_fact*bess_fact/div_fact
+    !   rdep_blm(:, ir) = rad_fact*(0.5_np*bess_fact/(rads(ir) + d) + dbess_fact)/div_fact
+    ! enddo
