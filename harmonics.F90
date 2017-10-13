@@ -283,11 +283,11 @@ module harmonics
     blm0 = 0
     do im = 0, lmax
       do il = im, lmax
-        blm0(il, im) = dt*sum(br_blm(im, :)*plm(il, im, :))*filter(il)/il/(il+1)
+        blm0(il, im) = dt*sum(br_blm(im, :)*plm(il, im, :))*filter(il)
       enddo
     enddo
-    blm0(0,0) = 0 ! otherwise it's infinite (division by zero)
-
+    blm0(0, :) = 0 ! otherwise it's infinite (division by zero)
+    ! print*, blm0
   end subroutine
 
   ! ################################################################################
@@ -427,9 +427,9 @@ module harmonics
     ! bess1(il,:) = (2/pi/rads1 + bess2(il,:)*bess1(il-1,:))/bess2(il-1,:)
 
     ir = 40
-    print*, rads1(ir)
+    ! print*, rads1(ir)
     do il = 0, lmax
-      print*, bess1(il,ir), bess2(il,ir)
+      ! print*, bess1(il,ir), bess2(il,ir)
     enddo
 
     ! and all the derivatives
@@ -442,11 +442,22 @@ module harmonics
     enddo
 
     allocate(blm(0:lmax, 0:lmax, nrad), alm(0:lmax, 0:lmax, nrad))
+    blm = 0
+    alm = 0
+    clm = 0
+    dlm = 0
 
+    ! define the initial coefficient for l, m = 0
     clm(0, 0) = 1
     dlm(0, 0) = (blm0(0, 0) - clm(0, 0)*bess1(0, 1))/bess2(0, 1)
-    do il = 1, lmax
-      do im = 0, il
+    print*, blm0(0, 0)
+    
+    ! define all the coefficients for m = 0
+    clm(:, 0) = blm0(:, 0)/bess2(0:lmax, 1)/(bess1(0:lmax, 1)/bess2(0:lmax, 1) - dbess1(0:lmax, nrad)/dbess2(0:lmax, nrad))
+    dlm(:, 0) = (blm0(:, 0) - clm(:, 0)*bess1(:, 1))/bess2(:, 1)
+
+    do im = 1, lmax
+      do il = im, lmax
         if (il /= lmax) then
           blm1 = blm0(il-1, im)
           blm2 = blm0(il, im)
@@ -454,7 +465,7 @@ module harmonics
         else
           blm1 = blm0(il-1, im)
           blm2 = blm0(il, im)
-          blm3 = blm0(il, im)
+          blm3 = blm2
         endif
         k1 = (il-1)*(il-im)/real(2*il-1, qp)
         k2 = (il+2)*(il+im+1)/real(2*il+3, qp)
@@ -463,7 +474,7 @@ module harmonics
           rads1(nrad)*(bess1(il-1, nrad) - bess1(il+1, nrad)) - &
           rads1(nrad)*(bess2(il-1, nrad) - bess2(il+1, nrad))/bess2(il, 1)*bess1(il, 1))/2
         
-        p3 = k1*rads1(nrad)*(bess1(il-1, nrad) - bess2(il-1, nrad)/bess2(il-1, 1)*bess1(il-1, 1))
+        p3 = -k1*rads1(nrad)*(bess1(il-1, nrad) - bess2(il-1, nrad)/bess2(il-1, 1)*bess1(il-1, 1))
 
         p1 = k2*rads1(nrad)*(bess1(il+1, nrad) - bess2(il+1, nrad)/bess2(il+1, 1)*bess1(il+1, 1))
 
@@ -476,11 +487,11 @@ module harmonics
 
         q3 = k1*(bess1(il-1, nrad) - bess2(il-1, nrad)/bess2(il-1, 1)*bess1(il-1, 1) + &
           rads1(nrad)*(bess1(il-2, nrad) - bess1(il, nrad)) - &
-          rads1(nrad)*(bess2(il-2, nrad) - bess2(il, nrad)/bess2(il-1, 1)*bess1(il-1, 1)))/2
+          rads1(nrad)*(bess2(il-2, nrad) - bess2(il, nrad))/bess2(il-1, 1)*bess1(il-1, 1))/2
 
-        q1 = k2*(bess1(il+1, nrad) - bess2(il+1, nrad)/bess2(il+1, 1)*bess1(il+1, 1) + &
+        q1 = -k2*(bess1(il+1, nrad) - bess2(il+1, nrad)/bess2(il+1, 1)*bess1(il+1, 1) + &
           rads1(nrad)*(bess1(il, nrad) - bess1(il+2, nrad)) - &
-          rads1(nrad)*(bess2(il, nrad) - bess2(il+2, nrad)/bess2(il+1, 1)*bess1(il+1, 1)))/2
+          rads1(nrad)*(bess2(il, nrad) - bess2(il+2, nrad))/bess2(il+1, 1)*bess1(il+1, 1))/2
 
         d2 = cmplx(0,im,qp)*rads1(nrad)*bess2(il, nrad)/bess2(il, 1)*blm2 + &
           k1/2*(bess2(il-1, nrad)/bess2(il-1, 1)*blm1 + &
@@ -488,7 +499,13 @@ module harmonics
           k2/2*(bess2(il+1, nrad)/bess2(il+1, 1)*blm3 + &
             rads1(nrad)*(bess2(il, nrad) - bess2(il+2, nrad))/bess2(il+1, 1)*blm3)
         
-        clm(il, im) = ((p1*q3 - p3*q1)*clm(il-1, im) + p1*d2 - q1*d1)/(p2*q1 - p1*q2)
+        
+        if (il == im) then
+          clm(il, im) = (q1*d1 - p1*d2)/(p1*q2 - q1*p2)
+        else
+          clm(il, im) = ((p1*q3 - p3*q1)*clm(il-1, im) + p1*d2 - q1*d1)/(p2*q1 - p1*q2)
+        endif
+        ! clm(il, im) = ((p1*q3 - p3*q1)*clm(il-1, im) + p1*d2 - q1*d1)/(p2*q1 - p1*q2)
 
         dlm(il, im) = (blm2 - clm(il, im)*bess1(il, 1))/bess2(il, 1)
 
@@ -562,7 +579,7 @@ module harmonics
       bbr = 0
       bbt = 0
       bbp = 0
-      do im = lmax, 1, -1
+      do im = lmax, 0, -1
         mi = cmplx(0,im,np)
         jm = im + 1
         do il = lmax, im, -1
