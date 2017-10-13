@@ -23,7 +23,7 @@ program mhs
   ! final field
   real(np), dimension(:,:,:), allocatable :: br, bt, bp, brw, btw, bpw
   character(100) :: outfname, outputdir
-  character(4) :: lmaxstr
+  character(4) :: lmaxstr, alphastr, dstr
 
   ! loop parameters
   integer :: ilat, ilon, ir, ip, it
@@ -129,6 +129,8 @@ program mhs
 
   ! writing final field to file
   write(lmaxstr,'(I4.4)') lmax
+  write(alphastr,'(F4.2)') alpha
+  write(dstr,'(F4.2)') d
 #if analytic
   outfname = 'data/mhs_field_'// &
     synfilename(index(synfilename, '/',.true.)+len('synmap_')+1:index(synfilename, '.dat')-1)// &
@@ -136,7 +138,7 @@ program mhs
 #elif fft
   outfname = 'data/mhs_field_'// &
     synfilename(index(synfilename, '/',.true.)+len('synmap_')+1:index(synfilename, '.dat')-1)// &
-    '_'//lmaxstr//'_fft.dat'
+    '_'//lmaxstr//'_fft_alpha_'//alphastr//'_d_'//dstr//'.dat'
 #endif
   print*, 'Writing to file '//outfname
 
