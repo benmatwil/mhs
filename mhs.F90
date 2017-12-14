@@ -8,7 +8,7 @@ program mhs
   ! reading in from the command line
   character(50) :: arg
   integer :: iarg, iinput
-  integer :: ic = 0, lc = 0, nfilter = 0
+  integer :: ic = 0, lc = 0, nfilter = 0, ac = 0, dc = 0
   real(np) :: modelrad = 0
   
   ! timing
@@ -59,10 +59,24 @@ program mhs
         ! read in model radius R_max
         call get_command_argument(iarg+1,arg)
         read(arg,*) modelrad
+      elseif (arg(1:2) == '-a' .or. arg(1:7) == '--alpha') then
+        ! read in alpha
+        call get_command_argument(iarg+1,arg)
+        read(arg,*) alpha
+        ac = 1
+        if (trim(arg) == '0' .or. trim(arg) == '0.' .or. trim(arg) == '0.0') zeroalpha = .true.
+      elseif (arg(1:2) == '-d') then
+        ! read in d
+        call get_command_argument(iarg+1,arg)
+        read(arg,*) d
+        dc = 1
       endif
     enddo
     if (ic == 0 .or. lc == 0) then
       stop "Haven't given a data input filename (-i) and lmax (-l)"
+    endif
+    if (ac == 0 .or. dc == 0) then
+      stop "Haven't given a data input alpha (-a or --alpha) and d (-d)"
     endif
   endif
 
@@ -131,14 +145,14 @@ program mhs
   write(lmaxstr,'(I4.4)') lmax
   write(alphastr,'(F4.2)') alpha
   write(dstr,'(F4.2)') d
-#if analytic
+#if finite
   outfname = 'data/mhs_field_'// &
     synfilename(index(synfilename, '/',.true.)+len('synmap_')+1:index(synfilename, '.dat')-1)// &
-    '_'//lmaxstr//'_anal'//nsplitstr//'.dat'
-#elif fft
+    '_'//lmaxstr//'_fft_alpha_'//alphastr//'_d_'//dstr//'-infinite.dat'
+#elif infinite
   outfname = 'data/mhs_field_'// &
     synfilename(index(synfilename, '/',.true.)+len('synmap_')+1:index(synfilename, '.dat')-1)// &
-    '_'//lmaxstr//'_fft_alpha_'//alphastr//'_d_'//dstr//'.dat'
+    '_'//lmaxstr//'_fft_alpha_'//alphastr//'_d_'//dstr//'-infinite.dat'
 #endif
   print*, 'Writing to file '//outfname
 

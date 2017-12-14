@@ -20,7 +20,8 @@ module harmonics
   integer :: lmax
   real(np) :: rmax
 
-  real(np), parameter :: alpha = 1, d = 0
+  real(np) :: alpha, d
+  logical :: zeroalpha
 
   ! grid coordinates
   integer :: nrad, ntheta, nphi
@@ -283,11 +284,11 @@ module harmonics
     blm0 = 0
     do im = 0, lmax
       do il = im, lmax
-        blm0(il, im) = dt*sum(br_blm(im, :)*plm(il, im, :))*filter(il)
+        blm0(il, im) = dt*sum(br_blm(im, :)*plm(il, im, :))*filter(il)/il/(il+1)
       enddo
     enddo
-    blm0(0, :) = 0 ! otherwise it's infinite (division by zero)
-    ! print*, blm0
+    blm0(0,0) = 0 ! otherwise it's infinite (division by zero)
+
   end subroutine
 
   ! ################################################################################
@@ -370,7 +371,9 @@ module harmonics
     implicit none
 
     integer :: ir, il, im, nrad
+    
     integer, parameter :: qp = 16
+    complex(qp) :: ilr, imr
     ! complex(np), parameter :: s = cmplx(0,-1,np)
     ! complex(np) :: fact1
     real(np), dimension(:) :: rads
@@ -384,15 +387,19 @@ module harmonics
     ! real(qp) :: rj,ry,rjp,ryp
     ! complex(qp), dimension(0:lmax) :: hfact, bess1fact, bess2fact, div_fact, bess_fact, dbess_fact
     complex(qp), dimension(0:lmax, 0:lmax) :: clm, dlm
-    real(qp) :: k1, k2
+    complex(qp) :: k1, k2
     complex(qp) :: blm1, blm2, blm3
-    complex(qp) :: p1, p2, p3, q1, q2, q3, d1, d2
-    ! complex(qp), dimension(:,:), allocatable :: rdep_blm, rdep_alm
+    ! complex(qp) :: p1, p2, p3, q1, q2, q3, d1, d2, testnum
+    real(qp), dimension(:), allocatable :: d1, d2
+    complex(qp), dimension(:,:), allocatable :: rdep_blm, rdep_alm
 
     nrad = size(rads,1)
     allocate(bess1(-2:lmax+2, nrad), bess2(-2:lmax+2, nrad))
     allocate(dbess1(0:lmax, nrad), dbess2(0:lmax, nrad))
-    ! allocate(rdep_blm(0:lmax, nrad), rdep_alm(0:lmax, nrad))
+    allocate(rdep_blm(0:lmax, nrad), rdep_alm(0:lmax, nrad))
+
+    ! allocate(alpha(nrad))
+    ! alpha = alpha0*(rads(nrad) - rads)/(rads(nrad) - rads(1))
 
     allocate(rads1(nrad))
     rads1 = alpha*(rads + d)
@@ -426,12 +433,6 @@ module harmonics
     ! wronskian if required    
     ! bess1(il,:) = (2/pi/rads1 + bess2(il,:)*bess1(il-1,:))/bess2(il-1,:)
 
-    ir = 40
-    ! print*, rads1(ir)
-    do il = 0, lmax
-      ! print*, bess1(il,ir), bess2(il,ir)
-    enddo
-
     ! and all the derivatives
     dbess1(0,:) = alpha*sqrt(2/pi/rads1)*(cos(rads1) - sin(rads1)/rads1/2)
     dbess2(0,:) = alpha*sqrt(2/pi/rads1)*(sin(rads1) + cos(rads1)/rads1/2)
@@ -441,78 +442,60 @@ module harmonics
       dbess2(il,:) = alpha*(bess2(il-1,:) - (il + 0.5_qp)*bess2(il,:)/rads1)
     enddo
 
-    allocate(blm(0:lmax, 0:lmax, nrad), alm(0:lmax, 0:lmax, nrad))
-    blm = 0
-    alm = 0
-    clm = 0
-    dlm = 0
+    allocate(d1(0:lmax), d2(0:lmax))
 
-    ! define the initial coefficient for l, m = 0
-    clm(0, 0) = 1
-    dlm(0, 0) = (blm0(0, 0) - clm(0, 0)*bess1(0, 1))/bess2(0, 1)
-    print*, blm0(0, 0)
-    
-    ! define all the coefficients for m = 0
-    clm(:, 0) = blm0(:, 0)/bess2(0:lmax, 1)/(bess1(0:lmax, 1)/bess2(0:lmax, 1) - dbess1(0:lmax, nrad)/dbess2(0:lmax, nrad))
-    dlm(:, 0) = (blm0(:, 0) - clm(:, 0)*bess1(:, 1))/bess2(:, 1)
+    ! do ir = 10, 10, 4
+    !   print*, rads1(ir), '...............'
+    !   do il = 0, lmax
+    !     print*, bess1(il, ir)/bess1(il, 1), blm0(il, il)
+    !   enddo
+    ! enddo
+    ! stop
 
-    do im = 1, lmax
-      do il = im, lmax
-        if (il /= lmax) then
-          blm1 = blm0(il-1, im)
-          blm2 = blm0(il, im)
-          blm3 = blm0(il+1, im)
-        else
-          blm1 = blm0(il-1, im)
-          blm2 = blm0(il, im)
-          blm3 = blm2
-        endif
-        k1 = (il-1)*(il-im)/real(2*il-1, qp)
-        k2 = (il+2)*(il+im+1)/real(2*il+3, qp)
+#if finite
+      if (zeroalpha) then
+        do ir = 1, nrad
+          d1 = 2*rads1(nrad)*dbess1(0:lmax, nrad) + bess1(0:lmax, nrad)
+          d2 = 2*rads1(nrad)*dbess2(0:lmax, nrad) + bess2(0:lmax, nrad)
 
-        p2 = cmplx(0,im,qp)*(bess1(il, nrad) - bess2(il, nrad)/bess2(il, 1)*bess1(il, 1) + &
-          rads1(nrad)*(bess1(il-1, nrad) - bess1(il+1, nrad)) - &
-          rads1(nrad)*(bess2(il-1, nrad) - bess2(il+1, nrad))/bess2(il, 1)*bess1(il, 1))/2
-        
-        p3 = -k1*rads1(nrad)*(bess1(il-1, nrad) - bess2(il-1, nrad)/bess2(il-1, 1)*bess1(il-1, 1))
+          rdep_blm(:, ir) = sqrt((rads(ir) + d)/(rads(1) + d))*rads(1)/rads(ir) &
+            *(d1*bess2(0:lmax, ir) - d2*bess1(0:lmax, ir))/(d1*bess2(0:lmax, 1) - d2*bess1(0:lmax, 1))
+          rdep_alm(:, ir) = rads(1)/sqrt(rads(1) + d)/sqrt(rads(ir) + d)/rads(ir) &
+            *(rads1(ir)*(d1*dbess2(0:lmax, ir) - d2*dbess1(0:lmax, ir)) + 0.5_qp*(d1*bess2(0:lmax, ir) - d2*bess1(0:lmax, ir))) &
+            /(d1*bess2(0:lmax, 1) - d2*bess1(0:lmax, 1))
+        enddo
+      else
+        do ir = 1, nrad
+          d1 = 2*rads1(nrad)*dbess1(0:lmax, nrad) + bess1(0:lmax, nrad)
+          d2 = 2*rads1(nrad)*dbess2(0:lmax, nrad) + bess2(0:lmax, nrad)
 
-        p1 = k2*rads1(nrad)*(bess1(il+1, nrad) - bess2(il+1, nrad)/bess2(il+1, 1)*bess1(il+1, 1))
-
-        d1 = cmplx(0,im,qp)*(bess2(il, nrad)/bess2(il, 1)*blm2 + &
-          rads1(nrad)*(bess2(il-1, nrad) - bess2(il+1, nrad))/bess2(il, 1)*blm2)/2 - &
-          k1*rads1(nrad)*bess2(il-1, nrad)/bess2(il-1, 1)*blm1 + &
-          k2*rads1(nrad)*bess2(il+1, nrad)/bess2(il+1, 1)*blm3
-
-        q2 = rads1(nrad)*cmplx(0,im,qp)*(bess1(il, nrad) - bess2(il, nrad)/bess2(il, 1)*bess1(il, 1))
-
-        q3 = k1*(bess1(il-1, nrad) - bess2(il-1, nrad)/bess2(il-1, 1)*bess1(il-1, 1) + &
-          rads1(nrad)*(bess1(il-2, nrad) - bess1(il, nrad)) - &
-          rads1(nrad)*(bess2(il-2, nrad) - bess2(il, nrad))/bess2(il-1, 1)*bess1(il-1, 1))/2
-
-        q1 = -k2*(bess1(il+1, nrad) - bess2(il+1, nrad)/bess2(il+1, 1)*bess1(il+1, 1) + &
-          rads1(nrad)*(bess1(il, nrad) - bess1(il+2, nrad)) - &
-          rads1(nrad)*(bess2(il, nrad) - bess2(il+2, nrad))/bess2(il+1, 1)*bess1(il+1, 1))/2
-
-        d2 = cmplx(0,im,qp)*rads1(nrad)*bess2(il, nrad)/bess2(il, 1)*blm2 + &
-          k1/2*(bess2(il-1, nrad)/bess2(il-1, 1)*blm1 + &
-            rads1(nrad)*(bess2(il-2, nrad) - bess2(il, nrad))/bess2(il-1, 1)*blm1) + &
-          k2/2*(bess2(il+1, nrad)/bess2(il+1, 1)*blm3 + &
-            rads1(nrad)*(bess2(il, nrad) - bess2(il+2, nrad))/bess2(il+1, 1)*blm3)
-        
-        
-        if (il == im) then
-          clm(il, im) = (q1*d1 - p1*d2)/(p1*q2 - q1*p2)
-        else
-          clm(il, im) = ((p1*q3 - p3*q1)*clm(il-1, im) + p1*d2 - q1*d1)/(p2*q1 - p1*q2)
-        endif
-        ! clm(il, im) = ((p1*q3 - p3*q1)*clm(il-1, im) + p1*d2 - q1*d1)/(p2*q1 - p1*q2)
-
-        dlm(il, im) = (blm2 - clm(il, im)*bess1(il, 1))/bess2(il, 1)
-
-        blm(il, im, :) = sqrt(rads + d)*(clm(il, im)*bess1(il, :) + dlm(il, im)*bess2(il, :))/rads
-        alm(il, im, :) = alpha*sqrt(rads + d)*(clm(il, im)*dbess1(il, :) + dlm(il, im)*dbess2(il, :))/rads + &
-          0.5_qp*(clm(il, im)*bess1(il, :) + dlm(il, im)*bess2(il, :))/rads/sqrt(rads + d)
+          rdep_blm(:, ir) = sqrt((rads(ir) + d)/(rads(1) + d))*rads(1)/rads(ir) &
+            *(d1*bess2(0:lmax, ir) - d2*bess1(0:lmax, ir))/(d1*bess2(0:lmax, 1) - d2*bess1(0:lmax, 1))
+          rdep_alm(:, ir) = rads(1)/sqrt(rads(1) + d)/sqrt(rads(ir) + d)/rads(ir) &
+            *(rads1(ir)*(d1*dbess2(0:lmax, ir) - d2*dbess1(0:lmax, ir)) + 0.5_qp*(d1*bess2(0:lmax, ir) - d2*bess1(0:lmax, ir))) &
+            /(d1*bess2(0:lmax, 1) - d2*bess1(0:lmax, 1))
+        enddo
+      endif
+#elif infinite
+      do ir = 1, nrad
+        rdep_blm(:, ir) = sqrt((rads(ir) + d)/(rads(1) + d))*(rads(1)/rads(ir))*(bess2(0:lmax, ir)/bess2(0:lmax, 1))
+        rdep_alm(:, ir) = rads(1)/sqrt(rads(1) + d)/sqrt(rads(ir) + d)/rads(ir) &
+          *((rads1(ir)*dbess2(0:lmax, ir) + 0.5_qp*bess2(0:lmax, ir))/bess2(0:lmax, 1))
       enddo
+#endif
+
+    allocate(blm(0:lmax, 0:lmax, nrad))
+    blm = 0
+    
+    do ir = 1, nrad
+      blm(:, :, ir) = blm0
+    enddo
+    !deallocate(blm0)
+    alm = blm
+    
+    do im = 0, lmax
+      blm(:, im, :) = blm(:, im, :)*rdep_blm(:, :)
+      alm(:, im, :) = alm(:, im, :)*rdep_alm(:, :)
     enddo
 
   end
