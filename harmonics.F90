@@ -370,40 +370,31 @@ module harmonics
 
     implicit none
 
-    integer :: ir, il, im, nrad
-    
     integer, parameter :: qp = 16
-    complex(qp) :: ilr, imr
-    ! complex(np), parameter :: s = cmplx(0,-1,np)
-    ! complex(np) :: fact1
+    integer :: ir, il, im, nrad
+
     real(np), dimension(:) :: rads
     real(qp), dimension(:), allocatable :: rads1
-    ! real(qp) :: rad_fact
-    ! integer, dimension(0:lmax) :: ls
-    ! real(qp), dimension(0:lmax) :: r_rsun, r_rmax, div_fact
+
+    complex(qp), dimension(:, :), allocatable :: rdep_blm, rdep_alm
+
+    integer, dimension(0:lmax) :: ls
+    real(np), dimension(0:lmax) :: r_rsun, r_rmax, div_fact
+    
+    real(qp) :: bess10
     real(qp), dimension(:,:), allocatable :: bess1, bess2, dbess1, dbess2
     real(qp), dimension(:,:), allocatable :: ibess1
-    real(qp) :: bess10
-    ! real(qp) :: rj,ry,rjp,ryp
-    ! complex(qp), dimension(0:lmax) :: hfact, bess1fact, bess2fact, div_fact, bess_fact, dbess_fact
-    complex(qp), dimension(0:lmax, 0:lmax) :: clm, dlm
-    complex(qp) :: k1, k2
-    complex(qp) :: blm1, blm2, blm3
-    ! complex(qp) :: p1, p2, p3, q1, q2, q3, d1, d2, testnum
+    
     real(qp), dimension(:), allocatable :: d1, d2
-    complex(qp), dimension(:,:), allocatable :: rdep_blm, rdep_alm
-
+    
     nrad = size(rads,1)
-    allocate(bess1(-2:lmax+2, nrad), bess2(-2:lmax+2, nrad))
-    allocate(dbess1(0:lmax, nrad), dbess2(0:lmax, nrad))
     allocate(rdep_blm(0:lmax, nrad), rdep_alm(0:lmax, nrad))
-
-    ! allocate(alpha(nrad))
-    ! alpha = alpha0*(rads(nrad) - rads)/(rads(nrad) - rads(1))
 
     allocate(rads1(nrad))
     rads1 = alpha*(rads + d)
-    ! print*, rads1
+
+    allocate(bess1(-2:lmax+2, nrad), bess2(-2:lmax+2, nrad))
+    allocate(dbess1(0:lmax, nrad), dbess2(0:lmax, nrad))
     
     ! calculate all required bessel functions
     ! bess1(0,:) = sqrt(2/pi/rads1)*sin(rads1)
@@ -442,44 +433,36 @@ module harmonics
       dbess2(il,:) = alpha*(bess2(il-1,:) - (il + 0.5_qp)*bess2(il,:)/rads1)
     enddo
 
-    allocate(d1(0:lmax), d2(0:lmax))
-
-    ! do ir = 10, 10, 4
-    !   print*, rads1(ir), '...............'
-    !   do il = 0, lmax
-    !     print*, bess1(il, ir)/bess1(il, 1), blm0(il, il)
-    !   enddo
-    ! enddo
-    ! stop
-
 #if finite
       if (zeroalpha) then
+        ls = [(il, il=0,lmax)]
         do ir = 1, nrad
-          d1 = 2*rads1(nrad)*dbess1(0:lmax, nrad) + bess1(0:lmax, nrad)
-          d2 = 2*rads1(nrad)*dbess2(0:lmax, nrad) + bess2(0:lmax, nrad)
+          r_rsun = (rads(ir) + d)/(1 + d)
+          r_rmax = (rads(ir) + d)/(rmax + d)
+          div_fact = ls + 1 + ls*((1 + d)/(rmax + d))**(2*ls + 1)
 
-          rdep_blm(:, ir) = sqrt((rads(ir) + d)/(rads(1) + d))*rads(1)/rads(ir) &
-            *(d1*bess2(0:lmax, ir) - d2*bess1(0:lmax, ir))/(d1*bess2(0:lmax, 1) - d2*bess1(0:lmax, 1))
-          rdep_alm(:, ir) = rads(1)/sqrt(rads(1) + d)/sqrt(rads(ir) + d)/rads(ir) &
-            *(rads1(ir)*(d1*dbess2(0:lmax, ir) - d2*dbess1(0:lmax, ir)) + 0.5_qp*(d1*bess2(0:lmax, ir) - d2*bess1(0:lmax, ir))) &
-            /(d1*bess2(0:lmax, 1) - d2*bess1(0:lmax, 1))
+          rdep_blm(:, ir) = 1/rads(ir) * (r_rsun)**(-ls) &
+            *( ( ls + 1 + ls*r_rmax**(2*ls + 1) ) / div_fact )
+          rdep_alm(:, ir) = 1/rads(ir) * (r_rsun)**(-ls) / (rads(ir) + d) * ls*(ls + 1) &
+            *( ( r_rmax**(2*ls + 1) - 1 ) / div_fact )
         enddo
       else
+        allocate(d1(0:lmax), d2(0:lmax))
         do ir = 1, nrad
           d1 = 2*rads1(nrad)*dbess1(0:lmax, nrad) + bess1(0:lmax, nrad)
           d2 = 2*rads1(nrad)*dbess2(0:lmax, nrad) + bess2(0:lmax, nrad)
 
-          rdep_blm(:, ir) = sqrt((rads(ir) + d)/(rads(1) + d))*rads(1)/rads(ir) &
+          rdep_blm(:, ir) = sqrt((rads(ir) + d)/(1 + d))*1/rads(ir) &
             *(d1*bess2(0:lmax, ir) - d2*bess1(0:lmax, ir))/(d1*bess2(0:lmax, 1) - d2*bess1(0:lmax, 1))
-          rdep_alm(:, ir) = rads(1)/sqrt(rads(1) + d)/sqrt(rads(ir) + d)/rads(ir) &
+          rdep_alm(:, ir) = 1/sqrt(1 + d)/sqrt(rads(ir) + d)/rads(ir) &
             *(rads1(ir)*(d1*dbess2(0:lmax, ir) - d2*dbess1(0:lmax, ir)) + 0.5_qp*(d1*bess2(0:lmax, ir) - d2*bess1(0:lmax, ir))) &
             /(d1*bess2(0:lmax, 1) - d2*bess1(0:lmax, 1))
         enddo
       endif
 #elif infinite
       do ir = 1, nrad
-        rdep_blm(:, ir) = sqrt((rads(ir) + d)/(rads(1) + d))*(rads(1)/rads(ir))*(bess2(0:lmax, ir)/bess2(0:lmax, 1))
-        rdep_alm(:, ir) = rads(1)/sqrt(rads(1) + d)/sqrt(rads(ir) + d)/rads(ir) &
+        rdep_blm(:, ir) = sqrt((rads(ir) + d)/(1 + d))*(1/rads(ir))*(bess2(0:lmax, ir)/bess2(0:lmax, 1))
+        rdep_alm(:, ir) = 1/sqrt(1 + d)/sqrt(rads(ir) + d)/rads(ir) &
           *((rads1(ir)*dbess2(0:lmax, ir) + 0.5_qp*bess2(0:lmax, ir))/bess2(0:lmax, 1))
       enddo
 #endif

@@ -23,7 +23,9 @@ program mhs
   ! final field
   real(np), dimension(:,:,:), allocatable :: br, bt, bp, brw, btw, bpw
   character(100) :: outfname, outputdir
-  character(4) :: lmaxstr, alphastr, dstr
+  character(4) :: lmaxstr
+  character(6) :: alphastr, dstr
+  character(:), allocatable :: typestr
 
   ! loop parameters
   integer :: ilat, ilon, ir, ip, it
@@ -64,6 +66,7 @@ program mhs
         call get_command_argument(iarg+1,arg)
         read(arg,*) alpha
         ac = 1
+        zeroalpha = .false.
         if (trim(arg) == '0' .or. trim(arg) == '0.' .or. trim(arg) == '0.0') zeroalpha = .true.
       elseif (arg(1:2) == '-d') then
         ! read in d
@@ -90,6 +93,8 @@ program mhs
   print*, 'lmax is', lmax
   if (mod(lmax,2) == 0) stop 'lmax is not odd'
   print*, 'rmax is', rmax
+  print*, 'alpha is', alpha
+  print*, 'd is', d
 
   call calc_grids()
 
@@ -143,17 +148,20 @@ program mhs
 
   ! writing final field to file
   write(lmaxstr,'(I4.4)') lmax
-  write(alphastr,'(F4.2)') alpha
-  write(dstr,'(F4.2)') d
+  write(alphastr,'(F6.3)') alpha
+  write(dstr,'(F6.3)') d
+  if (len(trim(adjustl(alphastr))) == 5) alphastr = '0'//trim(adjustl(alphastr))
+  if (len(trim(adjustl(dstr))) == 5) dstr = '0'//trim(adjustl(dstr))
+
 #if finite
-  outfname = 'data/mhs_field_'// &
-    synfilename(index(synfilename, '/',.true.)+len('synmap_')+1:index(synfilename, '.dat')-1)// &
-    '_'//lmaxstr//'_fft_alpha_'//alphastr//'_d_'//dstr//'-infinite.dat'
+  typestr = 'finite'
 #elif infinite
+  typestr = 'infinite'
+#endif
+
   outfname = 'data/mhs_field_'// &
     synfilename(index(synfilename, '/',.true.)+len('synmap_')+1:index(synfilename, '.dat')-1)// &
-    '_'//lmaxstr//'_fft_alpha_'//alphastr//'_d_'//dstr//'-infinite.dat'
-#endif
+    '_'//lmaxstr//'_fft_alpha_'//alphastr//'_d_'//dstr//'-'//typestr//'.dat'
   print*, 'Writing to file '//outfname
 
   allocate(brw(nrad, ntheta, nphi), btw(nrad, ntheta, nphi), bpw(nrad, ntheta, nphi))
@@ -170,7 +178,7 @@ program mhs
   enddo
 
   open(unit=2, file=trim(outfname), access='stream', status='replace')
-    write(2) size(brw,1), size(brw,2), size(brw,3)
+    write(2) int([size(brw, 1), size(brw, 2), size(brw, 3)], int32)
     write(2) brw, btw, bpw
     write(2) rads, thetas, phis
   close(2)

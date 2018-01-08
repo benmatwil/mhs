@@ -13,10 +13,13 @@ else
 endif
 FLAGS += -Jmod -fopenmp
 
-all : mhs
+all : mhs_finite mhs_infinite
 
-mhs : harmonics.F90 mhs.F90
-	$(FC) $(FLAGS) $(MODULES) $(LIBRARIES) $(DEFINE) $^ -o $@
+mhs_finite : harmonics.F90 mhs.F90
+	$(FC) $(FLAGS) $(MODULES) $(LIBRARIES) $(DEFINE) -Dfinite $^ -o $@
+
+mhs_infinite : harmonics.F90 mhs.F90
+	$(FC) $(FLAGS) $(MODULES) $(LIBRARIES) $(DEFINE) -Dinfinite $^ -o $@
 
 null_check : harmonics.F90 null_check.f90
 	$(FC) $(FLAGS) $(MODULES) $(LIBRARIES) $^ -o $@
