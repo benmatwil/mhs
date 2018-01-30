@@ -373,19 +373,19 @@ module harmonics
     integer, parameter :: qp = 16
     integer :: ir, il, im, nrad
 
-    real(np), dimension(:) :: rads
-    real(qp), dimension(:), allocatable :: rads1
+    complex(np), dimension(:) :: rads
+    complex(qp), dimension(:), allocatable :: rads1
 
     complex(qp), dimension(:, :), allocatable :: rdep_blm, rdep_alm
 
     integer, dimension(0:lmax) :: ls
     real(np), dimension(0:lmax) :: r_rsun, r_rmax, div_fact
     
-    real(qp) :: bess10
-    real(qp), dimension(:,:), allocatable :: bess1, bess2, dbess1, dbess2
-    real(qp), dimension(:,:), allocatable :: ibess1
+    complex(qp) :: bess10
+    complex(qp), dimension(:,:), allocatable :: bess1, bess2, dbess1, dbess2
+    complex(qp), dimension(:,:), allocatable :: ibess1
     
-    real(qp), dimension(:), allocatable :: d1, d2
+    complex(qp), dimension(:), allocatable :: d1, d2
     
     nrad = size(rads,1)
     allocate(rdep_blm(0:lmax, nrad), rdep_alm(0:lmax, nrad))
@@ -435,6 +435,7 @@ module harmonics
 
 #if finite
       if (zeroalpha) then
+        print*, 'Using alpha = 0 case'
         ls = [(il, il=0,lmax)]
         do ir = 1, nrad
           r_rsun = (rads(ir) + d)/(1 + d)
