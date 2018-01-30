@@ -25,7 +25,7 @@ program mhs
   character(100) :: outfname, outputdir
   character(4) :: lmaxstr
   character(6) :: alphastr, dstr
-  character(:), allocatable :: typestr
+  character(:), allocatable :: typestr, alphastr1, dstr1
 
   ! loop parameters
   integer :: ilat, ilon, ir, ip, it
@@ -152,6 +152,18 @@ program mhs
   write(dstr,'(F6.3)') d
   if (len(trim(adjustl(alphastr))) == 5) alphastr = '0'//trim(adjustl(alphastr))
   if (len(trim(adjustl(dstr))) == 5) dstr = '0'//trim(adjustl(dstr))
+  
+  if (d < 0) then
+    dstr1 = '-'//dstr
+  else
+    dstr1 = dstr
+  endif
+
+  if (alpha < 0) then
+    alphastr1 = '-'//alphastr
+  else
+    alphastr1 = alphastr
+  endif
 
 #if finite
   typestr = 'finite'
@@ -161,7 +173,7 @@ program mhs
 
   outfname = 'data/mhs_field_'// &
     synfilename(index(synfilename, '/',.true.)+len('synmap_')+1:index(synfilename, '.dat')-1)// &
-    '_'//lmaxstr//'_fft_alpha_'//alphastr//'_d_'//dstr//'-'//typestr//'.dat'
+    '_'//lmaxstr//'_fft_alpha_'//alphastr//'_d_'//dstr1//'-'//typestr//'.dat'
   print*, 'Writing to file '//outfname
 
   allocate(brw(nrad, ntheta, nphi), btw(nrad, ntheta, nphi), bpw(nrad, ntheta, nphi))
