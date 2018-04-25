@@ -24,8 +24,8 @@ program mhs
   real(np), dimension(:,:,:), allocatable :: br, bt, bp, brw, btw, bpw
   character(100) :: outfname, outputdir
   character(4) :: lmaxstr
-  character(6) :: alphastr, dstr
-  character(:), allocatable :: typestr, alphastr1, dstr1
+  character(7) :: alphastr, dstr
+  character(:), allocatable :: typestr
 
   ! loop parameters
   integer :: ilat, ilon, ir, ip, it
@@ -33,6 +33,7 @@ program mhs
   ! ################################################################################
 
   call cpu_time(start)
+  outputdir = 'data'
 
   if (command_argument_count() == 0) then
     stop 'No command line parameters given'
@@ -148,32 +149,33 @@ program mhs
 
   ! writing final field to file
   write(lmaxstr,'(I4.4)') lmax
-  write(alphastr,'(F6.3)') alpha
-  write(dstr,'(F6.3)') d
-  if (len(trim(adjustl(alphastr))) == 5) alphastr = '0'//trim(adjustl(alphastr))
-  if (len(trim(adjustl(dstr))) == 5) dstr = '0'//trim(adjustl(dstr))
-  
-  if (d < 0) then
-    dstr1 = '-'//dstr
-  else
-    dstr1 = dstr
-  endif
+  write(alphastr,'(F7.3)') alpha
+  write(dstr,'(F7.3)') d
 
   if (alpha < 0) then
-    alphastr1 = '-'//alphastr
+    if (len(trim(adjustl(alphastr))) == 6) alphastr = '-0'//alphastr(3:7)
   else
-    alphastr1 = alphastr
+    if (len(trim(adjustl(alphastr))) == 5) alphastr = '00'//alphastr(3:7)
+    if (len(trim(adjustl(alphastr))) == 6) alphastr = '0'//alphastr(2:7)
   endif
 
+  if (d < 0) then
+    if (len(trim(adjustl(dstr))) == 6) dstr = '-0'//dstr(3:7)
+  else
+    if (len(trim(adjustl(dstr))) == 5) dstr = '00'//dstr(3:7)
+    if (len(trim(adjustl(dstr))) == 6) dstr = '0'//dstr(2:7)
+  endif
+  
+  
 #if finite
   typestr = 'finite'
 #elif infinite
   typestr = 'infinite'
 #endif
 
-  outfname = 'data/mhs_field_'// &
+  outfname = trim(outputdir)//'/mhs_field_'// &
     synfilename(index(synfilename, '/',.true.)+len('synmap_')+1:index(synfilename, '.dat')-1)// &
-    '_'//lmaxstr//'_fft_alpha_'//alphastr//'_d_'//dstr1//'-'//typestr//'.dat'
+    '_'//lmaxstr//'_fft_alpha_'//alphastr//'_d_'//dstr//'-'//typestr//'.dat'
   print*, 'Writing to file '//outfname
 
   allocate(brw(nrad, ntheta, nphi), btw(nrad, ntheta, nphi), bpw(nrad, ntheta, nphi))
